@@ -1,0 +1,58 @@
+main:
+  params: [order]
+  steps:
+    - reservar_estoque:
+        try:
+          call: http.post
+          args:
+            url: https://order-system-1082565613873.us-central1.run.app/reserve
+            headers:
+              Idempotency-Key: ${order.id + "-reserva"}
+            body:
+              order_id: ${order.id}
+          result: estoque_result
+        retry: ${http.default_retry}
+    - cobrar_pagamento:
+        try:
+          call: http.post
+          args:
+            url: https://order-system-1082565613873.us-central1.run.app/charge
+            headers:
+              Idempotency-Key: ${order.id + "-payment"}
+            body:
+              order_id: ${order.id}
+              total: ${order.total}
+          result: pagamento_result
+        retry:
+          predicate: ${http.default_retry_predicate}
+          max_retries: 5
+          backoff:
+            initial_delay: 2
+            max_delay: 60
+            multiplier: 2
+        except:
+          as: e
+          steps:
+            - publicar_dlq:
+                call: googleapis.pubsub.v1.projects.topics.publish
+                args:
+                  topic: projects/project-4a227026-caa6-4ceb-928/topics/orders-dlq
+                  body:
+                    messages:
+                      - data: ${base64.encode(json.encode(e))}
+            - raise_error:
+                raise: ${e}
+    - enviar_pedido:
+        try:
+          call: http.post
+          args:
+            url: https://order-system-1082565613873.us-central1.run.app/ship
+            headers:
+              Idempotency-Key: ${order.id + "-envio"}
+            body:
+              order_id: ${order.id}
+              address: ${order.address}
+          result: envio_result
+        retry: ${http.default_retry}
+    - retornar:
+        return: ${envio_result.body}
