@@ -1,5 +1,5 @@
 {
-  "displayName": "Alerta Crítico: Taxa de Falha em Pagamentos",
+  "displayName": "Alerta Crítico: Taxa de Falha em Pagamentos (Log-based)",
   "userLabels": {
     "criticality": "high",
     "service": "order-pipeline"
@@ -8,7 +8,7 @@
     {
       "displayName": "Falhas de pagamento consecutivas (> 2 em 5 min)",
       "conditionThreshold": {
-        "filter": "resource.type = \"global\" AND metric.type = \"custom.googleapis.com/order_experience/payment_status\" AND metric.labels.status = \"failure\"",
+        "filter": "resource.type = \"global\" AND metric.type = \"logging.googleapis.com/user/payment_status_failures\"",
         "aggregations": [
           {
             "alignmentPeriod": "300s",
@@ -28,7 +28,7 @@
   "combiner": "OR",
   "enabled": true,
   "documentation": {
-    "content": "Este alerta indica que múltiplos pedidos falharam no processamento de pagamento nos últimos 5 minutos. Isso impacta diretamente a receita e a experiência do cliente. Verifique os logs estruturados com order_id e trace_id para diagnosticar o erro.",
+    "content": "Este alerta indica que múltiplos pedidos falharam no processamento de pagamento nos últimos 5 minutos. Esta métrica é baseada em logs estruturados. Verifique os logs estruturados com order_id e trace_id para diagnosticar o erro.",
     "mimeType": "text/markdown"
   }
 }
