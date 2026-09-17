@@ -6,75 +6,83 @@ steps:
       - '-c'
       - |
         pip install -r ./functions/requirements.txt pytest
-        pytest ./age_calculator/test_main.py  # Usando testes existentes como validação de pipeline
+        export PYTHONPATH=$$PYTHONPATH:$(pwd)/functions
+        pytest ./functions/test_app.py
 
   # 1. Build da imagem Docker
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${SHORT_SHA}', './functions']
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG}', './functions']
 
   # 2. Push da imagem para o Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${SHORT_SHA}']
+    args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG}']
 
-  # 3. Deploy do serviço de Reserva (Identity: sa-order-reserve)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'order-reserve'
-      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${SHORT_SHA}'
-      - '--region=${_REGION}'
-      - '--service-account=sa-order-reserve@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--no-allow-unauthenticated'
-      - '--platform=managed'
-
-  # 4. Deploy do serviço de Pagamento (Identity: sa-order-charge)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'order-charge'
-      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${SHORT_SHA}'
-      - '--region=${_REGION}'
-      - '--service-account=sa-order-charge@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--set-secrets=STRIPE_API_KEY=stripe-api-key:latest'
-      - '--no-allow-unauthenticated'
-      - '--platform=managed'
-
-  # 5. Deploy do serviço de Envio (Identity: sa-order-ship)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'order-ship'
-      - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${SHORT_SHA}'
-      - '--region=${_REGION}'
-      - '--service-account=sa-order-ship@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--no-allow-unauthenticated'
-      - '--platform=managed'
-
-  # 6. Deploy do Cloud Workflow (Atualizando URLs dinamicamente)
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  # 3. Deploy do serviço de Reserva
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
     entrypoint: /bin/bash
     args:
       - '-c'
       - |
-        RESERVE_URL=$(gcloud run services describe order-reserve --region=${_REGION} --format='value(status.url)')
-        CHARGE_URL=$(gcloud run services describe order-charge --region=${_REGION} --format='value(status.url)')
-        SHIP_URL=$(gcloud run services describe order-ship --region=${_REGION} --format='value(status.url)')
+        gcloud run deploy order-reserve \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG} \
+          --region=${_REGION} \
+          --service-account=sa-order-reserve@${PROJECT_ID}.iam.gserviceaccount.com \
+          --no-allow-unauthenticated \
+          --platform=managed \
+          --quiet \
+          --project=${PROJECT_ID}
+
+  # 4. Deploy do serviço de Pagamento (Com Secret Manager Nativo)
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
+    entrypoint: /bin/bash
+    args:
+      - '-c'
+      - |
+        gcloud run deploy order-charge \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG} \
+          --region=${_REGION} \
+          --service-account=sa-order-charge@${PROJECT_ID}.iam.gserviceaccount.com \
+          --set-secrets=STRIPE_API_KEY=stripe-api-key:latest \
+          --no-allow-unauthenticated \
+          --platform=managed \
+          --quiet \
+          --project=${PROJECT_ID}
+
+  # 5. Deploy do serviço de Envio
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
+    entrypoint: /bin/bash
+    args:
+      - '-c'
+      - |
+        gcloud run deploy order-ship \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG} \
+          --region=${_REGION} \
+          --service-account=sa-order-ship@${PROJECT_ID}.iam.gserviceaccount.com \
+          --no-allow-unauthenticated \
+          --platform=managed \
+          --quiet \
+          --project=${PROJECT_ID}
+
+  # 6. Atualização do Workflow
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
+    entrypoint: /bin/bash
+    args:
+      - '-c'
+      - |
+        RESERVE_URL=$(gcloud run services describe order-reserve --region=${_REGION} --project=${PROJECT_ID} --format='value(status.url)')
+        CHARGE_URL=$(gcloud run services describe order-charge --region=${_REGION} --project=${PROJECT_ID} --format='value(status.url)')
+        SHIP_URL=$(gcloud run services describe order-ship --region=${_REGION} --project=${PROJECT_ID} --format='value(status.url)')
         
         sed -i "s|https://order-system-.*\.run\.app/reserve|$${RESERVE_URL}/reserve|g" main.yaml
         sed -i "s|https://order-system-.*\.run\.app/charge|$${CHARGE_URL}/charge|g" main.yaml
         sed -i "s|https://order-system-.*\.run\.app/ship|$${SHIP_URL}/ship|g" main.yaml
         
-        gcloud workflows deploy order-orchestration --source=main.yaml --location=${_REGION}
+        gcloud workflows deploy order-orchestration --source=main.yaml --location=${_REGION} --project=${PROJECT_ID}
 
 substitutions:
   _REGION: us-central1
-  _REPO: my-docker-repo
+  _REPO: cloud-run-source-deploy
+  _TAG: latest
 
 options:
   logging: CLOUD_LOGGING_ONLY
