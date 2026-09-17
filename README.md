@@ -40,4 +40,5 @@ Automação total do ciclo de vida da aplicação através do arquivo `cloudbuil
    - Verifique que os outros serviços não possuem acesso ao segredo.
 
 ---
+**Status Final Aula 5:** ✅ Infraestrutura de Segurança e CI/CD validada e operacional.
 **Matheus Bravo da Silva** - bravo.htk@gmail.com
