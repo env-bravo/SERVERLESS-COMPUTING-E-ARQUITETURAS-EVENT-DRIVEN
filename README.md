@@ -16,8 +16,8 @@ A arquitetura foi refatorada para isolar as responsabilidades e identidades de c
 
 Implementada a gestão de credenciais sensíveis:
 - **Centralização:** Removidas chaves fixas ou variáveis de ambiente com valores sensíveis.
-- **Integração Nativa:** Uso da biblioteca `google-cloud-secret-manager` em Python.
-- **Otimização:** Implementado padrão **Singleton** para o cliente do Secret Manager e **Cache Local** do segredo para reduzir latência e custos de API.
+- **Integração Nativa:** Uso da funcionalidade nativa do Cloud Run (`--set-secrets`), que injeta o valor do segredo diretamente como variável de ambiente no container.
+- **Zero Código Extra:** Removida a necessidade de bibliotecas cliente (`google-cloud-secret-manager`) e lógica de busca manual, tornando a aplicação mais leve e agnóstica à infraestrutura.
 
 ### 3. CI/CD com Cloud Build
 

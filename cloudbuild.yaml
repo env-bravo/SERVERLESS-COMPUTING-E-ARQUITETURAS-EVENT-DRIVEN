@@ -30,7 +30,7 @@ steps:
       - '--image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${SHORT_SHA}'
       - '--region=${_REGION}'
       - '--service-account=sa-order-charge@${PROJECT_ID}.iam.gserviceaccount.com'
-      - '--set-env-vars=STRIPE_API_KEY_SECRET_NAME=projects/${PROJECT_ID}/secrets/stripe-api-key/versions/latest'
+      - '--set-secrets=STRIPE_API_KEY=stripe-api-key:latest'
       - '--no-allow-unauthenticated'
       - '--platform=managed'
 
