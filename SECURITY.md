@@ -75,8 +75,17 @@ CB_SA="${PROJECT_ID_NUMBER}@cloudbuild.gserviceaccount.com"
 
 # Permissões para Build e Deploy
 for ROLE in roles/run.developer roles/workflows.editor roles/artifactregistry.writer roles/logging.logWriter; do
-    gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-        --member="serviceAccount:${CB_SA}" \
-        --role="${ROLE}"
-done
+    ## 6. Configuração do Gatilho (Trigger)
+
+Para automatizar o deploy a cada push, crie o gatilho vinculando o repositório à branch específica:
+
+```bash
+gcloud beta builds triggers create github \
+    --name="trigger-aula-5-seguranca" \
+    --repo-name="SERVERLESS-COMPUTING-E-ARQUITETURAS-EVENT-DRIVEN" \
+    --repo-owner="env-bravo" \
+    --branch-pattern="^aula-5-segurança-e-ci-cd$" \
+    --build-config="cloudbuild.yaml" \
+    --substitutions=_REPO="seu-repositorio-artifact" \
+    --region=us-central1
 ```
