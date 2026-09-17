@@ -68,7 +68,8 @@ def charge():
     # Lógica de Segurança NATIVA: O Cloud Run injeta o segredo no ENV automaticamente
     api_key = os.environ.get('STRIPE_API_KEY')
     if api_key:
-        log_structured("API Key injetada via Secret Manager (Nativo)", severity="DEBUG", order_id=order_id)
+        log_structured("VALIDAÇÃO AULA 5: API Key injetada com sucesso via Secret Manager nativo", 
+                       severity="INFO", order_id=order_id, extra={"test_marker": "e2e_complete"})
         # Simulação: api_key[:4]...
     else:
         log_structured("AVISO: STRIPE_API_KEY não encontrada no ambiente", severity="WARNING", order_id=order_id)
