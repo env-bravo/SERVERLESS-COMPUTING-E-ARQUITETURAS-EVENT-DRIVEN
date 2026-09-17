@@ -1,48 +1,43 @@
-# Aula 4 - Observabilidade e Performance
+# Aula 5 - Segurança e CI/CD
 ## Repositório: SERVERLESS-COMPUTING-E-ARQUITETURAS-EVENT-DRIVEN
 
-Este repositório contém a implementação do Checkpoint 4, focado em instrumentação, monitoramento e otimização de um pipeline de pedidos serverless.
+Este repositório contém a implementação da Aula 5, focada no **Princípio do Menor Privilégio**, uso de **Custom Roles**, **Secret Manager** e automação com **Cloud Build**.
 
 ---
 
-### 1. Implementação de Observabilidade
+### 1. Segurança e IAM (Menor Privilégio)
 
-#### Cloud Logging (Estruturado)
-O pipeline foi instrumentado para emitir logs em formato JSON (`jsonPayload`), facilitando a análise e filtragem.
-- **Trace ID Correlation:** Implementada a extração e propagação do header `X-Cloud-Trace-Context` para correlacionar logs de diferentes serviços no **Cloud Trace**.
-- **Severidade:** Uso correto de níveis `INFO` para fluxo normal e `ERROR` para falhas.
+A arquitetura foi refatorada para isolar as responsabilidades e identidades de cada etapa do pipeline:
+- **Segregação de Identidades:** O serviço único foi dividido em 3 implantações distintas no Cloud Run (`reserve`, `charge`, `ship`), cada uma com sua própria **Service Account** dedicada.
+- **Custom Roles:** Criada a role `PaymentSecretAccessor` com permissões granulares (`versions.access`, `versions.get`), evitando o uso da role predefinida `roles/secretmanager.secretAccessor` que é mais ampla.
+- **Vínculo no Nível do Recurso:** A permissão de acesso ao segredo `stripe-api-key` foi concedida **apenas** à Service Account de pagamento e **apenas** para aquele segredo específico.
 
-#### Cloud Monitoring (Métricas de Experiência)
-Foram configuradas métricas que refletem a jornada real do produto, migradas para **Log-based Metrics** para maior eficiência:
-- `logging.googleapis.com/user/stock_reserved`: Sucesso na reserva de estoque.
-- `logging.googleapis.com/user/payment_status_success`: Conversão de vendas.
-- `logging.googleapis.com/user/payment_status_failures`: Perda de receita/falhas técnicas.
-- `logging.googleapis.com/user/order_shipped`: Conclusão do pipeline.
+### 2. Secret Manager
 
-#### Alerting Policy
-Configurada uma política de alerta crítica (`payment_alert_policy.json`) baseada na métrica de falha de pagamento:
-- **Condição:** Dispara se houver mais de 2 falhas em um intervalo de 5 minutos.
-- **Foco:** Reduzir o ruído de alertas (alert fatigue) focando no que impacta o negócio.
+Implementada a gestão de credenciais sensíveis:
+- **Centralização:** Removidas chaves fixas ou variáveis de ambiente com valores sensíveis.
+- **Integração Nativa:** Uso da biblioteca `google-cloud-secret-manager` em Python.
+- **Otimização:** Implementado padrão **Singleton** para o cliente do Secret Manager e **Cache Local** do segredo para reduzir latência e custos de API.
 
----
+### 3. CI/CD com Cloud Build
 
-### 2. Otimizações de Performance e Custo
-
-Foram aplicadas/propostas as seguintes otimizações concretas:
-
-| Otimização | Justificativa Técnica | Impacto |
-| :--- | :--- | :--- |
-| **Migração para Log-based Metrics** | Substituição do SDK de Monitoring por logs assíncronos. | **Performance:** Redução de 100-300ms de latência por passo. **Custo:** Menor tempo de execução e imagem menor. |
-| **Startup CPU Boost** | Alocação extra de CPU durante o boot da função (Cold Start). | **Cold Start:** Redução da latência inicial de ~6s para <2s em funções Python. |
-| **Lazy Initialization (Singleton)** | Inicialização de clientes GCP (Firestore/Logging) apenas quando demandados. | **Recursos:** Menor pegada de memória e maior estabilidade na escalabilidade. |
+Automação total do ciclo de vida da aplicação através do arquivo `cloudbuild.yaml`:
+1. **Build e Push:** Gera a imagem Docker e envia para o **Artifact Registry**.
+2. **Deploy Multi-Serviço:** Faz o deploy automático dos 3 serviços no Cloud Run com suas respectivas configurações de segurança e identidades.
+3. **Orquestração Dinâmica:** Atualiza as URLs no arquivo `main.yaml` do **Cloud Workflows** e faz o deploy da versão mais recente da orquestração.
 
 ---
 
-### 3. Como Visualizar os Resultados
+### Como Configurar e Executar
 
-1. **Trace:** Acesse o console do **Cloud Trace** para visualizar a latência ponta a ponta e identificar gargalos (Ex: o passo de `charge` domina a latência).
-2. **Logs:** No **Logs Explorer**, utilize o filtro `jsonPayload.metric_event:*` para ver os eventos de negócio.
-3. **Alertas:** Verifique em **Monitoring > Alerting** a política ativa "Alerta Crítico: Taxa de Falha em Pagamentos".
+1. **Infraestrutura:** Siga os passos detalhados no arquivo `SECURITY.md` para criar as Service Accounts, Roles e Segredos.
+2. **Deploy:** Execute o comando abaixo para iniciar o pipeline de CI/CD:
+   ```bash
+   gcloud builds submit --config cloudbuild.yaml --substitutions=_REPO="seu-repositorio"
+   ```
+3. **Validação:** 
+   - Teste o workflow e verifique nos logs que o passo de pagamento recupera a chave corretamente.
+   - Verifique que os outros serviços não possuem acesso ao segredo.
 
 ---
 **Matheus Bravo da Silva** - bravo.htk@gmail.com

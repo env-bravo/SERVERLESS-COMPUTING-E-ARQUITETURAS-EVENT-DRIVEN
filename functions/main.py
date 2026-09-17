@@ -4,6 +4,7 @@ import logging
 import time
 from flask import Flask, request, jsonify
 from google.cloud import firestore
+from google.cloud import secretmanager
 import google.cloud.logging
 
 # Configuração do Logging Estruturado
@@ -12,6 +13,30 @@ log_client.setup_logging()
 
 app = Flask(__name__)
 db = firestore.Client()
+
+# Singleton para Secret Manager
+secret_client = None
+secret_cache = {}
+
+def get_secret(secret_name):
+    """Obtém um segredo do Secret Manager com cache local."""
+    global secret_client
+    if secret_name in secret_cache:
+        return secret_cache[secret_name]
+    
+    if secret_client is None:
+        secret_client = secretmanager.SecretManagerServiceClient()
+    
+    try:
+        # Formato: projects/{project_id}/secrets/{secret_id}/versions/latest
+        # O nome completo deve vir da variável de ambiente para flexibilidade
+        response = secret_client.access_secret_version(request={"name": secret_name})
+        payload = response.payload.data.decode("UTF-8")
+        secret_cache[secret_name] = payload
+        return payload
+    except Exception as e:
+        logging.error(f"Erro ao acessar Secret Manager: {str(e)}")
+        return None
 
 def log_structured(message, severity="INFO", order_id=None, extra=None):
     """Auxiliar para emitir logs estruturados compatíveis com Cloud Logging."""
@@ -64,6 +89,19 @@ def charge():
     order_id = data.get('order_id', 'unknown')
 
     log_structured("Iniciando processamento de pagamento", severity="INFO", order_id=order_id)
+
+    # Lógica de Segurança: Recuperar chave do Secret Manager
+    secret_name = os.environ.get('STRIPE_API_KEY_SECRET_NAME')
+    if secret_name:
+        api_key = get_secret(secret_name)
+        if api_key:
+            log_structured("API Key recuperada do Secret Manager", severity="DEBUG", order_id=order_id)
+            # Simulação de uso da chave: api_key[:4]...
+        else:
+            log_structured("Falha ao recuperar API Key do Secret Manager", severity="ERROR", order_id=order_id)
+            return jsonify({"error": "Security configuration error"}), 500
+    else:
+        log_structured("AVISO: STRIPE_API_KEY_SECRET_NAME não configurado", severity="WARNING", order_id=order_id)
 
     if order_id == "ORD-FAIL-RETRY":
         log_structured("Simulando falha transiente (503)", severity="ERROR", order_id=order_id,
