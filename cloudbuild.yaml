@@ -1,4 +1,13 @@
 steps:
+  # 0. Executar Testes Unitários (Safety Brake)
+  - name: 'python:3.12-slim'
+    entrypoint: /bin/sh
+    args:
+      - '-c'
+      - |
+        pip install -r ./functions/requirements.txt pytest
+        pytest ./age_calculator/test_main.py  # Usando testes existentes como validação de pipeline
+
   # 1. Build da imagem Docker
   - name: 'gcr.io/cloud-builders/docker'
     args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${SHORT_SHA}', './functions']

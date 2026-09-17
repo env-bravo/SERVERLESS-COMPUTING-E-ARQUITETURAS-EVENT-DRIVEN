@@ -66,16 +66,17 @@ gcloud secrets add-iam-policy-binding stripe-api-key \
     --role="projects/${PROJECT_ID}/roles/PaymentSecretAccessor"
 ```
 
-## 4. Workload Identity e Cloud Build
-Para que o Cloud Build possa fazer o deploy usando as SAs criadas, ele precisa da permissão `iam.serviceAccountUser`.
+## 5. Identidade Própria do Pipeline (Cloud Build)
+
+O Cloud Build não deve ser Owner. Conceda apenas as roles necessárias para o pipeline operar:
 
 ```bash
-CB_SA=$(gcloud projects describe ${PROJECT_ID} --format="value(projectNumber)")@cloudbuild.gserviceaccount.com
+CB_SA="${PROJECT_ID_NUMBER}@cloudbuild.gserviceaccount.com"
 
-for SA in sa-order-reserve sa-order-charge sa-order-ship; do
-    gcloud iam service-accounts add-iam-policy-binding \
-        ${SA}@${PROJECT_ID}.iam.gserviceaccount.com \
+# Permissões para Build e Deploy
+for ROLE in roles/run.developer roles/workflows.editor roles/artifactregistry.writer roles/logging.logWriter; do
+    gcloud projects add-iam-policy-binding ${PROJECT_ID} \
         --member="serviceAccount:${CB_SA}" \
-        --role="roles/iam.serviceAccountUser"
+        --role="${ROLE}"
 done
 ```
