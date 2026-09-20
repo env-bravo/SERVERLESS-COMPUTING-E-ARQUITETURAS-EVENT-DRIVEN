@@ -22,7 +22,8 @@ def log_structured(message, severity="INFO", **kwargs):
 
 # Inicialização Vertex AI (Aula 6)
 PROJECT_ID = os.environ.get("GCP_PROJECT")
-LOCATION = "us-central1"
+# Usamos a região onde a função está rodando para buscar o modelo
+LOCATION = os.environ.get("FUNCTION_REGION", "us-east1")
 vertexai.init(project=PROJECT_ID, location=LOCATION)
 
 # --- DEFINIÇÃO DE FERRAMENTAS (Function Calling) ---
@@ -70,7 +71,7 @@ def triage_build_failure(cloud_event):
 
     # Configuração do Modelo (Aula 6)
     model = GenerativeModel(
-        "gemini-1.5-flash-001",
+        "gemini-1.5-flash",
         tools=[triage_tool],
         system_instruction=(
             "Você é um Agente de Triagem DevOps especializado em Google Cloud. "
@@ -88,19 +89,20 @@ def triage_build_failure(cloud_event):
     response = chat.send_message(prompt)
 
     # Verifica se a IA quer chamar uma função
-    function_call = response.candidates[0].content.parts[0].function_call
-    
-    if function_call.name == "get_build_logs":
-        # Executa a ação (Act) no nosso código
-        logs = mock_get_build_logs(function_call.args["build_id"])
-        
-        # Devolve a observação (Observe) para a IA
-        response = chat.send_message(
-            Part.from_function_response(
-                name="get_build_logs",
-                response={"content": logs}
+    parts = response.candidates[0].content.parts
+    if parts and parts[0].function_call:
+        function_call = parts[0].function_call
+        if function_call.name == "get_build_logs":
+            # Executa a ação (Act) no nosso código
+            logs = mock_get_build_logs(function_call.args["build_id"])
+            
+            # Devolve a observação (Observe) para a IA
+            response = chat.send_message(
+                Part.from_function_response(
+                    name="get_build_logs",
+                    response={"content": logs}
+                )
             )
-        )
 
     # Resultado Final da Investigação
     final_analysis = response.text
