@@ -6,19 +6,18 @@ steps:
       - '-c'
       - |
         pip install --no-cache-dir Flask==3.1.3 google-cloud-firestore==2.20.0 google-cloud-logging==3.11.0 cloudevents==1.10.1 functions-framework==3.8.1 pytest
-        export PYTHONPATH=$${PYTHONPATH}:$(pwd)/functions
-        pytest functions/test_app.py
+        export PYTHONPATH=$${PYTHONPATH}:$(pwd)/functions/orders
+        pytest functions/orders/test_app.py
 
-  # 1. Build da imagem Docker
+  # 1. Build da imagem Docker (Serviços de Pedido)
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG}', './functions']
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG}', './functions/orders']
 
   # 2. Push da imagem para o Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG}']
 
   # 3. Deploy do microsserviço consolidado (Reserve, Charge, Ship)
-  # Usamos a mesma imagem com rotas diferentes para os 3 serviços
   - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
     entrypoint: /bin/bash
     args:
@@ -43,8 +42,7 @@ steps:
           --service-account=sa-order-ship@${PROJECT_ID}.iam.gserviceaccount.com \
           --no-allow-unauthenticated --platform=managed --quiet --project=${PROJECT_ID}
 
-  # 4. Deploy do Agente de IA (Triage Agent)
-  # Disparado por Pub/Sub no tópico 'build-failures'
+  # 4. Deploy do Agente de IA (Triage Agent) - Isento de conflitos de porta
   - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
     entrypoint: /bin/bash
     args:
@@ -55,7 +53,7 @@ steps:
           --runtime=python310 \
           --region=${_REGION} \
           --entry-point=triage_build_failure \
-          --source=./functions \
+          --source=./functions/triage \
           --trigger-topic=build-failures \
           --service-account=sa-triage-agent@${PROJECT_ID}.iam.gserviceaccount.com \
           --set-env-vars=GCP_PROJECT=${PROJECT_ID} \
@@ -71,9 +69,9 @@ steps:
         CHARGE_URL=$(gcloud run services describe order-charge --region=${_REGION} --project=${PROJECT_ID} --format='value(status.url)')
         SHIP_URL=$(gcloud run services describe order-ship --region=${_REGION} --project=${PROJECT_ID} --format='value(status.url)')
         
-        sed -i "s|https://order-system-.*\.run\.app/reserve|$${RESERVE_URL}/reserve|g" workflows/order-orchestration.yaml
-        sed -i "s|https://order-system-.*\.run\.app/charge|$${CHARGE_URL}/charge|g" workflows/order-orchestration.yaml
-        sed -i "s|https://order-system-.*\.run\.app/ship|$${SHIP_URL}/ship|g" workflows/order-orchestration.yaml
+        sed -i "s|https://order-reserve-.*\.run\.app|$${RESERVE_URL}|g" workflows/order-orchestration.yaml
+        sed -i "s|https://order-charge-.*\.run\.app|$${CHARGE_URL}|g" workflows/order-orchestration.yaml
+        sed -i "s|https://order-ship-.*\.run\.app|$${SHIP_URL}|g" workflows/order-orchestration.yaml
         
         gcloud workflows deploy order-orchestration \
           --source=workflows/order-orchestration.yaml \
