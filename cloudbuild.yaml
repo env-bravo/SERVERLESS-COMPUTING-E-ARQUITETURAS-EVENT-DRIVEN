@@ -17,7 +17,8 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', '${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG}']
 
-  # 3. Deploy do serviço de Reserva
+  # 3. Deploy do microsserviço consolidado (Reserve, Charge, Ship)
+  # Usamos a mesma imagem com rotas diferentes para os 3 serviços
   - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
     entrypoint: /bin/bash
     args:
@@ -27,43 +28,40 @@ steps:
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG} \
           --region=${_REGION} \
           --service-account=sa-order-reserve@${PROJECT_ID}.iam.gserviceaccount.com \
-          --no-allow-unauthenticated \
-          --platform=managed \
-          --quiet \
-          --project=${PROJECT_ID}
-
-  # 4. Deploy do serviço de Pagamento (Com Secret Manager Nativo)
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
-    entrypoint: /bin/bash
-    args:
-      - '-c'
-      - |
+          --no-allow-unauthenticated --platform=managed --quiet --project=${PROJECT_ID}
+        
         gcloud run deploy order-charge \
           --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG} \
           --region=${_REGION} \
           --service-account=sa-order-charge@${PROJECT_ID}.iam.gserviceaccount.com \
           --set-secrets=STRIPE_API_KEY=stripe-api-key:latest \
-          --no-allow-unauthenticated \
-          --platform=managed \
-          --quiet \
-          --project=${PROJECT_ID}
+          --no-allow-unauthenticated --platform=managed --quiet --project=${PROJECT_ID}
 
-  # 5. Deploy do serviço de Envio
+        gcloud run deploy order-ship \
+          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG} \
+          --region=${_REGION} \
+          --service-account=sa-order-ship@${PROJECT_ID}.iam.gserviceaccount.com \
+          --no-allow-unauthenticated --platform=managed --quiet --project=${PROJECT_ID}
+
+  # 4. Deploy do Agente de IA (Triage Agent)
+  # Disparado por Pub/Sub no tópico 'build-failures'
   - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
     entrypoint: /bin/bash
     args:
       - '-c'
       - |
-        gcloud run deploy order-ship \
-          --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/order-system:${_TAG} \
+        gcloud functions deploy triage-agent \
+          --gen2 \
+          --runtime=python310 \
           --region=${_REGION} \
-          --service-account=sa-order-ship@${PROJECT_ID}.iam.gserviceaccount.com \
-          --no-allow-unauthenticated \
-          --platform=managed \
-          --quiet \
-          --project=${PROJECT_ID}
+          --main-http-entrypoint=triage_build_failure \
+          --source=./functions \
+          --trigger-topic=build-failures \
+          --service-account=sa-triage-agent@${PROJECT_ID}.iam.gserviceaccount.com \
+          --set-env-vars=GCP_PROJECT=${PROJECT_ID} \
+          --quiet --project=${PROJECT_ID}
 
-  # 6. Atualização do Workflow
+  # 5. Atualização e Deploy do Workflow (Aula 3)
   - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:latest'
     entrypoint: /bin/bash
     args:
@@ -73,11 +71,13 @@ steps:
         CHARGE_URL=$(gcloud run services describe order-charge --region=${_REGION} --project=${PROJECT_ID} --format='value(status.url)')
         SHIP_URL=$(gcloud run services describe order-ship --region=${_REGION} --project=${PROJECT_ID} --format='value(status.url)')
         
-        sed -i "s|https://order-system-.*\.run\.app/reserve|$${RESERVE_URL}/reserve|g" main.yaml
-        sed -i "s|https://order-system-.*\.run\.app/charge|$${CHARGE_URL}/charge|g" main.yaml
-        sed -i "s|https://order-system-.*\.run\.app/ship|$${SHIP_URL}/ship|g" main.yaml
+        sed -i "s|https://order-system-.*\.run\.app/reserve|$${RESERVE_URL}/reserve|g" workflows/order-orchestration.yaml
+        sed -i "s|https://order-system-.*\.run\.app/charge|$${CHARGE_URL}/charge|g" workflows/order-orchestration.yaml
+        sed -i "s|https://order-system-.*\.run\.app/ship|$${SHIP_URL}/ship|g" workflows/order-orchestration.yaml
         
-        gcloud workflows deploy order-orchestration --source=main.yaml --location=${_REGION} --project=${PROJECT_ID}
+        gcloud workflows deploy order-orchestration \
+          --source=workflows/order-orchestration.yaml \
+          --location=${_REGION} --project=${PROJECT_ID}
 
 substitutions:
   _REGION: us-central1
