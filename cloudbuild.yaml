@@ -54,7 +54,7 @@ steps:
           --gen2 \
           --runtime=python310 \
           --region=${_REGION} \
-          --main-http-entrypoint=triage_build_failure \
+          --entry-point=triage_build_failure \
           --source=./functions \
           --trigger-topic=build-failures \
           --service-account=sa-triage-agent@${PROJECT_ID}.iam.gserviceaccount.com \
