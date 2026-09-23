@@ -1,6 +1,13 @@
-# Projeto Final: Arquitetura Serverless, Event-Driven e IA (Vertex AI)
+# Projeto Final Consolidado: Arquitetura Serverless, Event-Driven e IA (Vertex AI)
 
-Este repositório apresenta a consolidação final da disciplina de **Serverless Computing e Arquiteturas Event-Driven**. A solução proposta não é apenas um conjunto de funções, mas um ecossistema resiliente, seguro e inteligente que integra automação DevOps com IA Generativa.
+Este repositório é a **versão absoluta e definitiva** que consolida todo o conhecimento e projetos desenvolvidos ao longo da disciplina de **Serverless Computing e Arquiteturas Event-Driven (Aulas 1 a 6)**. 
+
+Ele integra:
+- **Aulas 1 e 2:** Calculadora de Idade (HTTP e Event-Driven).
+- **Aula 3:** Orquestração de Pedidos com Cloud Workflows.
+- **Aula 4:** Observabilidade Estruturada e Performance.
+- **Aula 5:** Segurança IAM, Segredos e CI/CD.
+- **Aula 6:** Inteligência Artificial Generativa com Agente de Triagem (ReAct).
 
 ---
 

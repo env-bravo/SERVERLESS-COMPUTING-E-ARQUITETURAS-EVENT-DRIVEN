@@ -22,8 +22,8 @@ def log_structured(message, severity="INFO", **kwargs):
 
 # Inicialização Vertex AI (Aula 6)
 PROJECT_ID = os.environ.get("GCP_PROJECT")
-# Usamos a região onde a função está rodando para buscar o modelo
-LOCATION = os.environ.get("FUNCTION_REGION", "us-east1")
+# Usamos a região onde a função está rodando para buscar o modelo (us-central1 é a mais estável)
+LOCATION = os.environ.get("FUNCTION_REGION", "us-central1")
 vertexai.init(project=PROJECT_ID, location=LOCATION)
 
 # --- DEFINIÇÃO DE FERRAMENTAS (Function Calling) ---
@@ -70,6 +70,7 @@ def triage_build_failure(cloud_event):
     log_structured(f"Iniciando triagem para o build {build_id}", severity="INFO", build_id=build_id)
 
     # Configuração do Modelo (Aula 6)
+    # Usamos o alias gemini-1.5-flash para maior compatibilidade regional
     model = GenerativeModel(
         "gemini-1.5-flash",
         tools=[triage_tool],
@@ -86,31 +87,37 @@ def triage_build_failure(cloud_event):
     
     # Pergunta inicial da IA
     prompt = f"O build {build_id} falhou. Investigue a causa e me dê um resumo."
-    response = chat.send_message(prompt)
-
-    # Verifica se a IA quer chamar uma função
-    parts = response.candidates[0].content.parts
-    if parts and parts[0].function_call:
-        function_call = parts[0].function_call
-        if function_call.name == "get_build_logs":
-            # Executa a ação (Act) no nosso código
-            logs = mock_get_build_logs(function_call.args["build_id"])
-            
-            # Devolve a observação (Observe) para a IA
-            response = chat.send_message(
-                Part.from_function_response(
-                    name="get_build_logs",
-                    response={"content": logs}
-                )
-            )
-
-    # Resultado Final da Investigação
-    final_analysis = response.text
-    log_structured(
-        "Triagem concluída pela IA", 
-        severity="INFO", 
-        analysis=final_analysis, 
-        build_id=build_id
-    )
     
-    return final_analysis
+    try:
+        response = chat.send_message(prompt)
+
+        # Verifica se a IA quer chamar uma função
+        parts = response.candidates[0].content.parts
+        if parts and parts[0].function_call:
+            function_call = parts[0].function_call
+            if function_call.name == "get_build_logs":
+                # Executa a ação (Act) no nosso código
+                logs = mock_get_build_logs(function_call.args["build_id"])
+                
+                # Devolve a observação (Observe) para a IA
+                response = chat.send_message(
+                    Part.from_function_response(
+                        name="get_build_logs",
+                        response={"content": logs}
+                    )
+                )
+
+        # Resultado Final da Investigação
+        final_analysis = response.text
+        log_structured(
+            "Triagem concluída pela IA", 
+            severity="INFO", 
+            analysis=final_analysis, 
+            build_id=build_id
+        )
+        
+        return final_analysis
+
+    except Exception as e:
+        log_structured("Erro ao processar raciocínio da IA", severity="ERROR", error=str(e))
+        return f"Erro de IA: {str(e)}"
