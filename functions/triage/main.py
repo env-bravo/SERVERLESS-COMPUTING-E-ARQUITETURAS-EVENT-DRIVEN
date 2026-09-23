@@ -70,9 +70,9 @@ def triage_build_failure(cloud_event):
     log_structured(f"Iniciando triagem para o build {build_id}", severity="INFO", build_id=build_id)
 
     # Configuração do Modelo (Aula 6)
-    # Usamos o alias gemini-1.5-flash para maior compatibilidade regional
+    # Usamos o alias gemini-1.5-pro para maior estabilidade em algumas regiões
     model = GenerativeModel(
-        "gemini-1.5-flash",
+        "gemini-1.5-pro",
         tools=[triage_tool],
         system_instruction=(
             "Você é um Agente de Triagem DevOps especializado em Google Cloud. "
