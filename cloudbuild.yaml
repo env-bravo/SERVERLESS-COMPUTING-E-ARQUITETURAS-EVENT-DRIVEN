@@ -50,7 +50,7 @@ steps:
       - |
         gcloud functions deploy triage-agent \
           --gen2 \
-          --runtime=python310 \
+          --runtime=python312 \
           --region=${_REGION} \
           --entry-point=triage_build_failure \
           --source=./functions/triage \
@@ -68,7 +68,7 @@ steps:
       - |
         gcloud functions deploy calculate-age-event-driven \
           --gen2 \
-          --runtime=python310 \
+          --runtime=python312 \
           --region=${_REGION} \
           --entry-point=calculate_age_pubsub \
           --source=./functions/age-calculator \
